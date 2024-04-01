@@ -1,0 +1,15 @@
+[Unit]
+Description=dotbot
+Requires=docker.service
+After=docker.service
+
+[Service]
+Restart=always
+ExecStartPre=-/usr/bin/docker stop freebot
+ExecStartPre=-/usr/bin/docker rm freebot
+ExecStartPre=/usr/bin/docker pull registry.digitalocean.com/tutorhelp/freebot:latest
+ExecStart=/usr/bin/docker run --name freebot -e TOKEN=${TOKEN} -v dbdata:/app/data/ registry.digitalocean.com/tutorhelp/freebot:latest
+ExecStop=/usr/bin/docker stop freebot
+
+[Install]
+WantedBy=multi-user.target

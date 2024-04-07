@@ -1,3 +1,4 @@
+import asyncio
 import os
 import telebot
 import logging
@@ -10,6 +11,8 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+from app.fight import fight
+from app.fighters import default_fighters, select_fighters, MoreThanOneFighterException, FighterNonFoundException
 from helpers.error import error_handler
 
 # Set up logging
@@ -20,7 +23,7 @@ logger = logging.getLogger(__name__)
 bot = telebot.TeleBot(os.getenv("TOKEN"))
 
 
-FIGHTER, FIGHT, RESULTS = range(3)
+FIGHTER = range(1)
 # start -description
 # /fight - choose your fighter
 # fighter selected - start random fight, delay
@@ -40,14 +43,15 @@ class FoodFightBot:
             states={
                 FIGHTER: [
                     MessageHandler(
-                        filters.Regex("^Fighter.+$"),
+                        # filters.Regex("^Fighter.+$"),
+                        filters.TEXT & ~filters.COMMAND, 
                         self.fighter_selection,
                     )
                 ],
-                FIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.fight)],
-                RESULTS: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.fight_results),
-                ],
+                # FIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.fight)],
+                # RESULTS: [
+                #     MessageHandler(filters.TEXT & ~filters.COMMAND, self.fight_results),
+                # ],
             },
             fallbacks=[
                 CommandHandler("cancel", self.cancel),
@@ -74,36 +78,59 @@ class FoodFightBot:
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Starts the conversation and asks the user to select a fighter."""
+        user = update.message.from_user
+        logger.info("User %s choosing the fighter.", user.first_name)
         await update.message.reply_text(
-            "Choose your fighter",
+            f"Choose your fighter:\n",
         )
+
+        for f in default_fighters:
+            await update.message.reply_text(
+                f"{str(f)}",
+            )
 
         return FIGHTER
     
     async def fighter_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Stores the selected fighter and starts the fight."""
-        context.user_data["fighter"] = update.message.text
-        await update.message.reply_text(
-            "Fight started",
-        )
+        user = update.message.from_user
+        logger.info("User %s want fighter %s in message.", user.first_name, update.message.text)
 
-        return FIGHT
+        try:
+            fighter = select_fighters(update.message.text, default_fighters)
+        except FighterNonFoundException:
+            await update.message.reply_text("Fighter not found. Please choose a valid fighter.")
+            return FIGHTER
+        except MoreThanOneFighterException as e:
+            await update.message.reply_text(f"Please choose only one fighter. Found: {e.message} You mean only one, right? :)")
+            return FIGHTER
+        
+        fighter_name = update.message.text.lower() #TODO the whole message, split it to chunks
+
+        for fighter in default_fighters:
+            if fighter_name in fighter.name.lower():
+                # context.user_data["fighter"] = fighter
+
+                winner, opponent = fight(fighter, default_fighters)
+                await update.message.reply_text(f"{fighter.name} [{fighter.icon}] vs. {opponent.name} [{opponent.icon}]!")
+                await update.message.reply_text(f"Fight started...")
+
+                # FIXME here is also a fight method decompose me
+                # await update.chat_action("typing")
+                await asyncio.sleep(3)
+                await update.message.reply_text("Fight ended")
+                await update.message.reply_text("The winner is...")
+                # await update.chat_action("typing")
+                await asyncio.sleep(3)
+                await update.message.reply_text(f"{winner.name} [{winner.icon}]!")
+                message = f"Congratulations, you are the winner!" if winner == fighter else "Sorry, you did not win this time."
+                await update.message.reply_text(message)
+
+                return ConversationHandler.END
+
+        await update.message.reply_text("Fighter not found. Please choose a valid fighter.")
+        return FIGHTER
     
-    async def fight(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Simulates a fight and shows the results."""
-        await update.message.reply_text(
-            "Fight results",
-        )
-
-        return RESULTS
-    
-    async def fight_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Shows the results of the fight and ends the conversation."""
-        await update.message.reply_text(
-            "Fight ended",
-        )
-
-        return ConversationHandler.END
     
 if __name__ == "__main__":
     import os

@@ -1,5 +1,5 @@
 import random
-from app.fighters import Fighter
+from app.models import Fighter
 import copy
 from typing import Tuple
 
@@ -17,3 +17,12 @@ def fight(fighter: Fighter, opponents: list[Fighter]) -> Tuple[Fighter, Fighter]
     opponent = random.choice(opponents_copy)
 
     return random.choice([fighter, opponent]), opponent
+
+def create_fighter(name, icon, attack_power, description):
+    """Used by unit tests"""
+    fighter = Fighter()
+    fighter.name = name
+    fighter.icon = icon
+    fighter.attack_power = attack_power
+    fighter.description = description
+    return fighter

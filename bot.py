@@ -12,12 +12,23 @@ from telegram.ext import (
     ContextTypes,
 )
 from app.fight import fight
-from app.fighters import default_fighters, select_fighters, MoreThanOneFighterException, FighterNonFoundException
+from app.models import Fighter, User, Base
+from app.selector import select_fighters, MoreThanOneFighterException, FighterNonFoundException
 from helpers.error import error_handler
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.exc import IntegrityError
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+engine = create_engine('sqlite:///ffb.sqlite')
+Base.metadata.bind = engine
+Session = scoped_session(sessionmaker(bind=engine, expire_on_commit=False))
+
 
 # Replace 'TOKEN' with your actual bot token
 bot = telebot.TeleBot(os.getenv("TOKEN"))
@@ -48,10 +59,6 @@ class FoodFightBot:
                         self.fighter_selection,
                     )
                 ],
-                # FIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.fight)],
-                # RESULTS: [
-                #     MessageHandler(filters.TEXT & ~filters.COMMAND, self.fight_results),
-                # ],
             },
             fallbacks=[
                 CommandHandler("cancel", self.cancel),
@@ -80,11 +87,36 @@ class FoodFightBot:
         """Starts the conversation and asks the user to select a fighter."""
         user = update.message.from_user
         logger.info("User %s choosing the fighter.", user.first_name)
+
+        # create a new SQLAlchemy session TODO put a try here
+        session = Session()
+        # create a new User object and add it to the session
+        try:
+            # create a new User object and add it to the session
+            new_user = User(id=user.id, name=user.first_name)
+            session.add(new_user)
+    
+            # query the default fighters
+            default_fighters = session.query(Fighter).filter_by(is_default=True).all()
+
+            # add the default fighters to the user's fighters
+            new_user.fighters = default_fighters
+
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+
+        fighters = session.query(Fighter).join(User.fighters).filter(User.id == user.id).all()
+        # check if at least one fighter is found
+        if not fighters:
+            await update.message.reply_text("No fighters found. Please redo /start command.")
+            return FIGHTER
+
         await update.message.reply_text(
             f"Choose your fighter:\n",
         )
-
-        for f in default_fighters:
+        
+        for f in fighters:
             await update.message.reply_text(
                 f"{str(f)}",
             )
@@ -96,8 +128,19 @@ class FoodFightBot:
         user = update.message.from_user
         logger.info("User %s want fighter %s in message.", user.first_name, update.message.text)
 
+
+        # create a new SQLAlchemy session TODO put a try here
+        session = Session()
+        all_fighters = session.query(Fighter).all()
+        user_fighters = session.query(Fighter).join(User.fighters).filter(User.id == user.id).all()
+        # check if at least one fighter is found
+        if not user_fighters:
+            await update.message.reply_text("No fighters found. Please redo /start command.")
+            return FIGHTER
+
         try:
-            fighter = select_fighters(update.message.text, default_fighters)
+            # TODO select from user own fighters list
+            fighter = select_fighters(update.message.text, user_fighters)
         except FighterNonFoundException:
             await update.message.reply_text("Fighter not found. Please choose a valid fighter.")
             return FIGHTER
@@ -105,32 +148,40 @@ class FoodFightBot:
             await update.message.reply_text(f"Please choose only one fighter. Found: {e.message} You mean only one, right? :)")
             return FIGHTER
         
-        fighter_name = update.message.text.lower() #TODO the whole message, split it to chunks
+        # TODO here we need a unit test for opponent selection:
+        # - last opponent will not be selected
+        # - your fighter itself not to be selected
+        opponents = all_fighters.copy()
+        if "previous_opponent" in context.user_data:
+            previous_opponent_name = context.user_data["previous_opponent"].name
+            opponents = [opponent for opponent in opponents if opponent.name != previous_opponent_name]
 
-        for fighter in default_fighters:
-            if fighter_name in fighter.name.lower():
-                # context.user_data["fighter"] = fighter
+        try:
+            opponents.remove(fighter) # do not fight with yourself too
+        except ValueError: # can be last opponent so removed before
+            pass
 
-                winner, opponent = fight(fighter, default_fighters)
-                await update.message.reply_text(f"{fighter.name} [{fighter.icon}] vs. {opponent.name} [{opponent.icon}]!")
-                await update.message.reply_text(f"Fight started...")
+        winner, opponent = fight(fighter, opponents)
 
-                # FIXME here is also a fight method decompose me
-                # await update.chat_action("typing")
-                await asyncio.sleep(3)
-                await update.message.reply_text("Fight ended")
-                await update.message.reply_text("The winner is...")
-                # await update.chat_action("typing")
-                await asyncio.sleep(3)
-                await update.message.reply_text(f"{winner.name} [{winner.icon}]!")
-                message = f"Congratulations, you are the winner!" if winner == fighter else "Sorry, you did not win this time."
-                await update.message.reply_text(message)
+        # save opponent by context to not fight with the same opponent second time consecutively
+        context.user_data["previous_opponent"] = opponent
 
-                return ConversationHandler.END
+        await update.message.reply_text(f"{fighter.name} [{fighter.icon}] vs. {opponent.name} [{opponent.icon}]!")
+        await update.message.reply_text(f"Fight started...")
+        # FIXME here is also a fight method decompose me
+        # await update.chat_action("typing")
+        await asyncio.sleep(3)
+        await update.message.reply_text("Fight ended")
+        await update.message.reply_text("The winner is...")
+        # await update.chat_action("typing")
+        await asyncio.sleep(3)
+        await update.message.reply_text(f"{winner.name} [{winner.icon}]!")
+        message = f"Congratulations, you are the winner!" if winner == fighter else "Sorry, you did not win this time."
+        await update.message.reply_text(message)
 
-        await update.message.reply_text("Fighter not found. Please choose a valid fighter.")
+        await update.message.reply_text(f"Would you like to fight again? If so, please choose your fighter.")
         return FIGHTER
-    
+
     
 if __name__ == "__main__":
     import os

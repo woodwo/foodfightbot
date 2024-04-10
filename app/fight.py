@@ -6,16 +6,12 @@ from typing import Tuple
 
 def fight(fighter: Fighter, opponents: list[Fighter]) -> Tuple[Fighter, Fighter]:
     """Simulate a fight between a fighter and a random opponent."""
-
+    # TODO do it in place maybe? too much copying
     opponents_copy = copy.deepcopy(opponents)
-
-    try:
-        opponents_copy.remove(fighter)
-    except ValueError:
-        pass
+    opponents_copy = [f for f in opponents_copy if f.name != fighter.name]
 
     opponent = random.choice(opponents_copy)
-
+    # TODO some tests for winner == fighter? 
     return random.choice([fighter, opponent]), opponent
 
 def create_fighter(name, icon, attack_power, description):

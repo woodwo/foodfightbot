@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, time
 import os
 import telebot
 import logging
@@ -12,11 +13,11 @@ from telegram.ext import (
     ContextTypes,
 )
 from app.fight import fight
-from app.models import Fighter, User, Base
+from app.models import FightResult, Fighter, User, Base, UserFighter
 from app.selector import select_fighters, MoreThanOneFighterException, FighterNonFoundException
 from helpers.error import error_handler
 
-from sqlalchemy import create_engine
+from sqlalchemy import and_, create_engine, func
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.exc import IntegrityError
 
@@ -55,6 +56,7 @@ class FoodFightBot:
                 FIGHTER: [
                     MessageHandler(
                         # filters.Regex("^Fighter.+$"),
+                        # TODO do fix for /start and /start again
                         filters.TEXT & ~filters.COMMAND, 
                         self.fighter_selection,
                     )
@@ -100,13 +102,12 @@ class FoodFightBot:
             default_fighters = session.query(Fighter).filter_by(is_default=True).all()
 
             # add the default fighters to the user's fighters
-            new_user.fighters = default_fighters
-
+            new_user.user_fighters = [UserFighter(fighter=fighter) for fighter in default_fighters]
             session.commit()
         except IntegrityError:
             session.rollback()
 
-        fighters = session.query(Fighter).join(User.fighters).filter(User.id == user.id).all()
+        fighters = session.query(Fighter).join(UserFighter).filter(UserFighter.user_id == user.id).all()
         # check if at least one fighter is found
         if not fighters:
             await update.message.reply_text("No fighters found. Please redo /start command.")
@@ -128,11 +129,10 @@ class FoodFightBot:
         user = update.message.from_user
         logger.info("User %s want fighter %s in message.", user.first_name, update.message.text)
 
-
         # create a new SQLAlchemy session TODO put a try here
         session = Session()
         all_fighters = session.query(Fighter).all()
-        user_fighters = session.query(Fighter).join(User.fighters).filter(User.id == user.id).all()
+        user_fighters = session.query(Fighter).join(UserFighter).filter(UserFighter.user_id == user.id).all()
         # check if at least one fighter is found
         if not user_fighters:
             await update.message.reply_text("No fighters found. Please redo /start command.")
@@ -163,9 +163,28 @@ class FoodFightBot:
 
         winner, opponent = fight(fighter, opponents)
 
-        # save opponent by context to not fight with the same opponent second time consecutively
-        context.user_data["previous_opponent"] = opponent
+        # create a new FightResult object and add it to the session
+        new_fight_result = FightResult(user_id=user.id, fighter_id=fighter.id, opponent_id=opponent.id, is_user_win=(winner == fighter))
+        session.add(new_fight_result)
 
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+
+        # how much wins since last update
+        # get the last update time of user_fighters
+        last_update_time = session.query(func.max(UserFighter.timestamp)).filter(UserFighter.user_id == user.id).scalar()
+
+        # count the wins since last update
+        win_count = session.query(FightResult).filter(
+            FightResult.user_id == user.id,
+            FightResult.is_user_win == True,
+            FightResult.timestamp > last_update_time
+        ).count()
+        logger.info("User %s wins since last update %d.", user.first_name, win_count)
+
+        # TODO this is a conversation
         await update.message.reply_text(f"{fighter.name} [{fighter.icon}] vs. {opponent.name} [{opponent.icon}]!")
         await update.message.reply_text(f"Fight started...")
         # FIXME here is also a fight method decompose me
@@ -178,6 +197,10 @@ class FoodFightBot:
         await update.message.reply_text(f"{winner.name} [{winner.icon}]!")
         message = f"Congratulations, you are the winner!" if winner == fighter else "Sorry, you did not win this time."
         await update.message.reply_text(message)
+
+
+        # save opponent by context to not fight with the same opponent second time consecutively
+        context.user_data["previous_opponent"] = opponent
 
         await update.message.reply_text(f"Would you like to fight again? If so, please choose your fighter.")
         return FIGHTER

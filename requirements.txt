@@ -13,9 +13,11 @@ h11==0.14.0
 httpcore==1.0.5
 httpx==0.27.0
 idna==2.10
+inflect==7.2.0
 Levenshtein==0.25.0
 Mako==1.3.2
 MarkupSafe==2.1.5
+more-itertools==10.2.0
 mypy-extensions==1.0.0
 packaging==24.0
 pathspec==0.12.1
@@ -33,5 +35,6 @@ telebot==0.0.5
 telegram==0.0.1
 telegram-handler==1.4.4
 tomli==2.0.1
+typeguard==4.2.1
 typing_extensions==4.10.0
 urllib3==1.26.18

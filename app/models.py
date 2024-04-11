@@ -36,6 +36,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
+    next_win_count = Column(Integer, default=3)
 
     user_fighters = relationship('UserFighter', back_populates='user')
     fight_results = relationship('FightResult', back_populates='user')

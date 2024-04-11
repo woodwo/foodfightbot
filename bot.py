@@ -13,6 +13,7 @@ from telegram.ext import (
     ContextTypes,
 )
 from app.fight import fight
+from app.hire import hire
 from app.models import FightResult, Fighter, User, Base, UserFighter
 from app.selector import select_fighters, MoreThanOneFighterException, FighterNonFoundException
 from helpers.error import error_handler
@@ -87,7 +88,18 @@ class FoodFightBot:
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Starts the conversation and asks the user to select a fighter."""
-        user = update.message.from_user
+        if update.message is not None:
+            user = update.message.from_user
+        elif update.callback_query is not None:
+            user = update.callback_query.from_user
+        elif update.inline_query is not None:
+            user = update.inline_query.from_user
+        else:
+            await update.message.reply_text(
+                "You User is not found. Please redo /start command.",
+            )
+            return ConversationHandler.END
+        
         logger.info("User %s choosing the fighter.", user.first_name)
 
         # create a new SQLAlchemy session TODO put a try here
@@ -102,7 +114,10 @@ class FoodFightBot:
             default_fighters = session.query(Fighter).filter_by(is_default=True).all()
 
             # add the default fighters to the user's fighters
-            new_user.user_fighters = [UserFighter(fighter=fighter) for fighter in default_fighters]
+            for fighter in default_fighters:
+                user_fighter = UserFighter(user=new_user, fighter=fighter)
+                session.add(user_fighter)
+
             session.commit()
         except IntegrityError:
             session.rollback()
@@ -137,10 +152,27 @@ class FoodFightBot:
         if not user_fighters:
             await update.message.reply_text("No fighters found. Please redo /start command.")
             return FIGHTER
+        
+        # check user daily calories limit
+        current_date = datetime.now().date()
+        # query UserFighter for the current date and select fighters and their attack_power
+        user_fighters_calories = session.query(Fighter.attack_power).join(
+            FightResult, 
+            and_(FightResult.user_id == user.id, FightResult.fighter_id == Fighter.id)  # specify how to join FightResult and Fighter
+        ).filter(
+            func.date(FightResult.timestamp) >= current_date
+        ).all()
+        # calculate the total attack power of the user's fighters
+        today_calories = sum(row.attack_power for row in user_fighters_calories)
+        logger.info("User %s calories today %d.", user.first_name, today_calories)
 
         try:
             # TODO select from user own fighters list
             fighter = select_fighters(update.message.text, user_fighters)
+            # TODO fix hardcoded 2500
+            if fighter.attack_power + today_calories > 2500:
+                await update.message.reply_text(f"You've selected {fighter.name} [{fighter.icon}] that cost {fighter.attack_power} calories. Seems you have reached your daily calories limit of 2500, today you already made {today_calories}. Please choose a fighter with less attack power.")
+                return FIGHTER
         except FighterNonFoundException:
             await update.message.reply_text("Fighter not found. Please choose a valid fighter.")
             return FIGHTER
@@ -184,6 +216,26 @@ class FoodFightBot:
         ).count()
         logger.info("User %s wins since last update %d.", user.first_name, win_count)
 
+        # update the next_win_count of the user
+        user = session.query(User).get(user.id)
+        if user.next_win_count <= win_count:            
+            # TODO this is a logic too set it aside
+            if user.next_win_count == 7:
+                user.next_win_count = 11
+            if user.next_win_count == 5:
+                user.next_win_count = 7
+            if user.next_win_count == 3:
+                user.next_win_count = 5
+
+            # Select fighters that are not related to the user yet
+            candidates = session.query(Fighter).filter(~Fighter.user_fighters.any(UserFighter.user_id == user.id)).all()
+            if candidates:
+                new_fighter = hire(candidates)
+                user_fighter = UserFighter(user=user, fighter=new_fighter)
+                session.add(user_fighter)
+                await update.message.reply_text(f"Congratulations! You have unlocked a new fighter: {new_fighter.name} [{new_fighter.icon}].")
+
+            session.commit()
         # TODO this is a conversation
         await update.message.reply_text(f"{fighter.name} [{fighter.icon}] vs. {opponent.name} [{opponent.icon}]!")
         await update.message.reply_text(f"Fight started...")

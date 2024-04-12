@@ -24,8 +24,8 @@ def upgrade() -> None:
     with op.batch_alter_table('fight_results') as batch_op:
         batch_op.create_foreign_key('fk_fight_results_fighter', 'fighters', ['fighter_id'], ['id'])
         batch_op.create_foreign_key('fk_fight_results_opponent', 'fighters', ['opponent_id'], ['id'])
-    op.drop_column('fight_results', 'fighter')
-    op.drop_column('fight_results', 'opponent')
+        batch_op.drop_column('fighter')
+        batch_op.drop_column('opponent')
 
 
 def downgrade() -> None:
@@ -34,5 +34,5 @@ def downgrade() -> None:
     with op.batch_alter_table('fight_results') as batch_op:
             batch_op.drop_constraint('fk_fight_results_fighter', type_='foreignkey')
             batch_op.drop_constraint('fk_fight_results_opponent', type_='foreignkey')
-    op.drop_column('fight_results', 'opponent_id')
-    op.drop_column('fight_results', 'fighter_id')
+            batch_op.drop_column('opponent_id')
+            batch_op.drop_column('fighter_id')

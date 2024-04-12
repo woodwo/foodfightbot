@@ -1,0 +1,7 @@
+*.sqlite
+*.db
+.vscode
+.venv
+.gitignore
+.github
+.git

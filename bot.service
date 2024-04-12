@@ -1,15 +1,16 @@
 [Unit]
-Description=dotbot
+Description=foodfightbot
 Requires=docker.service
 After=docker.service
 
 [Service]
 Restart=always
-ExecStartPre=-/usr/bin/docker stop freebot
-ExecStartPre=-/usr/bin/docker rm freebot
-ExecStartPre=/usr/bin/docker pull registry.digitalocean.com/tutorhelp/freebot:latest
-ExecStart=/usr/bin/docker run --name freebot -e TOKEN=${TOKEN} -v dbdata:/app/data/ registry.digitalocean.com/tutorhelp/freebot:latest
-ExecStop=/usr/bin/docker stop freebot
+ExecStartPre=-/usr/bin/docker stop foodfightbot
+ExecStartPre=-/usr/bin/docker rm foodfightbot
+ExecStartPre=-/usr/bin/docker volume create --name dbdata
+ExecStartPre=/usr/bin/docker pull registry.digitalocean.com/tutorhelp/foodfightbot:latest
+ExecStart=/usr/bin/docker run --name foodfightbot -e TOKEN=${TOKEN} -v dbdata:/app/data/ registry.digitalocean.com/tutorhelp/foodfightbot:latest
+ExecStop=/usr/bin/docker stop foodfightbot
 
 [Install]
 WantedBy=multi-user.target

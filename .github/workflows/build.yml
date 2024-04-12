@@ -20,7 +20,6 @@ jobs:
 
       - name: Log in to DO Container Registry 
         run: doctl registry login --expiry-seconds 600
-        ${{ secrets.DIGITALOCEAN_REGISTRY_TOKEN }}
       - name: Build image 
         run: docker build -t foodfightbot .
 

@@ -28,7 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from alembic.config import Config
 from alembic import command
 
-engine = create_engine("sqlite:///ffb.sqlite")
+engine = create_engine("sqlite:///data/ffb.sqlite")
 Base.metadata.bind = engine
 Session = scoped_session(sessionmaker(bind=engine, expire_on_commit=False))
 

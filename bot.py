@@ -53,6 +53,7 @@ FIGHTER = range(1)
 # /fight - choose your fighter
 # fighter selected - start random fight, delay
 # results
+TOTAL_DAILY_CALORIES = 2500
 
 
 class FoodFightBot:
@@ -183,31 +184,15 @@ class FoodFightBot:
             )
             return FIGHTER
 
-        # check user daily calories limit
-        current_date = datetime.now().date()
-        # query UserFighter for the current date and select fighters and their attack_power
-        user_fighters_calories = (
-            session.query(Fighter.attack_power)
-            .join(
-                FightResult,
-                and_(
-                    FightResult.user_id == user.id, FightResult.fighter_id == Fighter.id
-                ),  # specify how to join FightResult and Fighter
-            )
-            .filter(func.date(FightResult.timestamp) >= current_date)
-            .all()
-        )
-        # calculate the total attack power of the user's fighters
-        today_calories = sum(row.attack_power for row in user_fighters_calories)
-        logger.info("User %s calories today %d.", user.first_name, today_calories)
+        today_calories = await self.get_user_calories(session, user)
 
         try:
             # TODO select from user own fighters list
             fighter = select_fighters(update.message.text, user_fighters)
             # TODO fix hardcoded 2500
-            if fighter.attack_power + today_calories > 2500:
+            if fighter.attack_power + today_calories > TOTAL_DAILY_CALORIES:
                 await update.message.reply_text(
-                    f"You've selected {fighter.name} [{fighter.icon}] that cost {fighter.attack_power} calories. Seems you have reached your daily calories limit of 2500, today you already made {today_calories}. Please choose a fighter with less attack power."
+                    f"You've selected {fighter.name} [{fighter.icon}] that cost {fighter.attack_power} calories. Seems you have reached your daily calories limit of {TOTAL_DAILY_CALORIES}, today you already made {today_calories}. Please choose a fighter with less attack power."
                 )
                 return FIGHTER
         except FighterNonFoundException:
@@ -318,7 +303,11 @@ class FoodFightBot:
             if winner == fighter
             else "Sorry, you did not win this time."
         )
-        await update.message.reply_text(message)
+        await update.message.reply_text(f"{message}")
+        consumed_calories = await self.get_user_calories(session, user)
+        await update.message.reply_text(
+            f"You have consumed {consumed_calories} calories today! {TOTAL_DAILY_CALORIES-consumed_calories} to go!"
+        )
 
         # save opponent by context to not fight with the same opponent second time consecutively
         context.user_data["previous_opponent"] = opponent
@@ -327,6 +316,26 @@ class FoodFightBot:
             f"Would you like to fight again? If so, please choose your fighter."
         )
         return FIGHTER
+
+    async def get_user_calories(self, session, user):
+        # check user daily calories limit
+        current_date = datetime.now().date()
+        # query UserFighter for the current date and select fighters and their attack_power
+        user_fighters_calories = (
+            session.query(Fighter.attack_power)
+            .join(
+                FightResult,
+                and_(
+                    FightResult.user_id == user.id, FightResult.fighter_id == Fighter.id
+                ),  # specify how to join FightResult and Fighter
+            )
+            .filter(func.date(FightResult.timestamp) >= current_date)
+            .all()
+        )
+        # calculate the total attack power of the user's fighters
+        today_calories = sum(row.attack_power for row in user_fighters_calories)
+        # logger.info("User %s calories today %d.", user.first_name, today_calories)
+        return today_calories
 
 
 if __name__ == "__main__":

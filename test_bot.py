@@ -23,12 +23,16 @@ class TestBot(unittest.TestCase):
 
         session = MagicMock()
         session.query.return_value.all.return_value = []
-        session.query.return_value.join.return_value.filter.return_value.all.return_value = []
+        session.query.return_value.join.return_value.filter.return_value.all.return_value = (
+            []
+        )
 
         with patch("bot.Session", return_value=session):
             result = asyncio.run(self.bot.fighter_selection(update, context))
 
-        update.message.reply_text.assert_called_with("No fighters found. Please redo /start command.")
+        update.message.reply_text.assert_called_with(
+            "No fighters found. Please redo /start command."
+        )
 
 
 if __name__ == "__main__":

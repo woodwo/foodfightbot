@@ -13,9 +13,10 @@ def fight(fighter: Fighter, opponents: list[Fighter]) -> Tuple[Fighter, Fighter]
     opponent = random.choice(opponents_copy)
     weights = [fighter.attack_power, opponent.attack_power]
 
-    # TODO some tests for winner == fighter? 
+    # TODO some tests for winner == fighter?
     # TODO some tests for weights
     return random.choices([fighter, opponent], weights, k=1)[0], opponent
+
 
 def create_fighter(name, icon, attack_power, description):
     """Used by unit tests"""

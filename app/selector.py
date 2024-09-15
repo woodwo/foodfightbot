@@ -5,6 +5,7 @@ import inflect
 metaphone = DMetaphone()
 stem = inflect.engine()
 
+
 class MoreThanOneFighterException(Exception):
     def __init__(self, message="More than one fighter was chosen."):
         self.message = message
@@ -16,10 +17,12 @@ class FighterNonFoundException(Exception):
 
 
 def select_fighters(message: str, fighters: list[Fighter]) -> Fighter:
-    message = ''.join(ch for ch in message if ch.isalpha() or ch.isspace())
+    message = "".join(ch for ch in message if ch.isalpha() or ch.isspace())
     message_words = {_stem_metaphone(word): word for word in message.lower().split()}
 
-    fighters_dict = {_stem_metaphone(fighter.name.lower()): fighter for fighter in fighters}
+    fighters_dict = {
+        _stem_metaphone(fighter.name.lower()): fighter for fighter in fighters
+    }
 
     intersection = set(fighters_dict.keys()).intersection(set(message_words.keys()))
     if len(intersection) == 1:

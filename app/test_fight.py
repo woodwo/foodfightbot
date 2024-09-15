@@ -1,13 +1,19 @@
 import unittest
 from app.fight import create_fighter, fight
 from app.models import Fighter
-from app.selector import MoreThanOneFighterException, FighterNonFoundException, select_fighters
+from app.selector import (
+    MoreThanOneFighterException,
+    FighterNonFoundException,
+    select_fighters,
+)
 
 
 class TestFight(unittest.TestCase):
     def setUp(self):
-        self.set = [create_fighter("Boxer", "🥊", 10, "A boxer fighter for testing"), 
-                    create_fighter("Karate", "🥋", 20, "A karate fighter for testing")]
+        self.set = [
+            create_fighter("Boxer", "🥊", 10, "A boxer fighter for testing"),
+            create_fighter("Karate", "🥋", 20, "A karate fighter for testing"),
+        ]
         self.theone = self.set[0]
 
     def test_fight_set_not_altered(self):
@@ -59,7 +65,7 @@ class TestSelectFighters(unittest.TestCase):
         message = "Kebab"
         selected_fighter = select_fighters(message, self.fighters)
         self.assertEqual(selected_fighter, self.kebab)
-    
+
     def test_select_fighters_single_match_case_phonetic1(self):
         message = "kibap"
         selected_fighter = select_fighters(message, self.fighters)
@@ -79,7 +85,7 @@ class TestSelectFighters(unittest.TestCase):
         message = "I choose burger"
         with self.assertRaises(FighterNonFoundException):
             select_fighters(message, self.fighters)
-    
+
     def test_select_fighters_match_plural_from_message(self):
         message = "kebabs"
         selected_fighter = select_fighters(message, self.fighters)
@@ -93,6 +99,7 @@ class TestSelectFighters(unittest.TestCase):
 
 class TestRemoveFighters(unittest.TestCase):
     """To show how remove() works"""
+
     def setUp(self):
         self.dumpling = create_fighter("Dumplings", "", 1, "")
         self.kebab = create_fighter("Kebab", "", 1, "")
@@ -109,5 +116,5 @@ class TestRemoveFighters(unittest.TestCase):
         self.assertIn(self.dumpling, self.fighters)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

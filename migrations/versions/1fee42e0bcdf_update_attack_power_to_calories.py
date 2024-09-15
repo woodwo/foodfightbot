@@ -5,6 +5,7 @@ Revises: ff09a4c92707
 Create Date: 2024-04-11 13:00:32.167961
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -12,8 +13,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '1fee42e0bcdf'
-down_revision: Union[str, None] = 'ff09a4c92707'
+revision: str = "1fee42e0bcdf"
+down_revision: Union[str, None] = "ff09a4c92707"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -26,7 +27,7 @@ def upgrade():
         "UPDATE fighters SET attack_power = 420 WHERE name = 'Nuggets';",
         "UPDATE fighters SET attack_power = 1200 WHERE name = 'Pizza';",
         "UPDATE fighters SET attack_power = 540 WHERE name = 'Toblerone';",
-        "UPDATE fighters SET attack_power = 800 WHERE name = 'Ramen';"
+        "UPDATE fighters SET attack_power = 800 WHERE name = 'Ramen';",
     ]
 
     for sql in sql_statements:

@@ -37,8 +37,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Add my ID to env
+        run: sed -i "s/Environment=DEVELOPER_ID=/Environment=DEVELOPER_ID=${{ secrets.DEVELOPER_ID }}/" bot.service
+
       - name: Add token to env
-        run:  sed -i "6a Environment=TOKEN=${{ secrets.TELEGRAM_TOKEN }}" bot.service
+        run: sed -i "s/Environment=TOKEN=/Environment=TOKEN=${{ secrets.TELEGRAM_TOKEN }}/" bot.service
 
       - name: SCP Command to Transfer Files
         uses: appleboy/scp-action@v0.1.3

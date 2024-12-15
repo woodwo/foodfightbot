@@ -4,6 +4,8 @@ Requires=docker.service
 After=docker.service
 
 [Service]
+Environment=DEVELOPER_ID=
+Environment=TOKEN=
 Restart=always
 ExecStartPre=-/usr/bin/docker stop foodfightbot
 ExecStartPre=-/usr/bin/docker rm foodfightbot

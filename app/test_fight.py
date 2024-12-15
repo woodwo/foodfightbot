@@ -29,7 +29,9 @@ class TestSelectFighters(unittest.TestCase):
     def setUp(self):
         self.dumpling = create_fighter("Dumplings", "", 1, "")
         self.kebab = create_fighter("Kebab", "", 1, "")
-        self.fighters = [self.dumpling, self.kebab]
+        self.burger = create_fighter("Burger", "", 1, "")
+        self.nuggets = create_fighter("Nuggets", "", 1, "")
+        self.fighters = [self.dumpling, self.kebab, self.burger, self.nuggets]
 
     def test_select_fighters_single_match_remove_punctuation(self):
         message = "Yaay Go Kebab, go"
@@ -67,7 +69,7 @@ class TestSelectFighters(unittest.TestCase):
         self.assertEqual(selected_fighter, self.kebab)
 
     def test_select_fighters_single_match_case_phonetic1(self):
-        message = "kibap"
+        message = "kebap"
         selected_fighter = select_fighters(message, self.fighters)
         self.assertEqual(selected_fighter, self.kebab)
 
@@ -82,7 +84,7 @@ class TestSelectFighters(unittest.TestCase):
             select_fighters(message, self.fighters)
 
     def test_select_fighters_no_match(self):
-        message = "I choose burger"
+        message = "I choose omelette"
         with self.assertRaises(FighterNonFoundException):
             select_fighters(message, self.fighters)
 
@@ -95,6 +97,21 @@ class TestSelectFighters(unittest.TestCase):
         message = "dumpling"
         selected_fighter = select_fighters(message, self.fighters)
         self.assertEqual(selected_fighter, self.dumpling)
+
+    def test_select_fighters_should_not_match_burger_with_nuggets(self):
+        message = "burger"
+        selected_fighter = select_fighters(message, self.fighters)
+        self.assertEqual(selected_fighter, self.burger)
+
+    def test_select_fighters_no_false_positives(self):
+        message = "I want nuggets"
+        selected_fighter = select_fighters(message, self.fighters)
+        self.assertEqual(selected_fighter, self.nuggets)
+
+    def test_select_fighters_similar_names(self):
+        message = "burger"
+        selected_fighter = select_fighters(message, self.fighters)
+        self.assertEqual(selected_fighter, self.burger)
 
 
 class TestRemoveFighters(unittest.TestCase):

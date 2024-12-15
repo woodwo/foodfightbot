@@ -1,10 +1,12 @@
 from app.models import Fighter
-from fuzzy import DMetaphone
+from rapidfuzz import fuzz
 import inflect
 
-metaphone = DMetaphone()
 stem = inflect.engine()
 
+def _stem_metaphone(word: str) -> str:
+    w = stem.singular_noun(word) or word
+    return w.lower()
 
 class MoreThanOneFighterException(Exception):
     def __init__(self, message="More than one fighter was chosen."):
@@ -18,22 +20,21 @@ class FighterNonFoundException(Exception):
 
 def select_fighters(message: str, fighters: list[Fighter]) -> Fighter:
     message = "".join(ch for ch in message if ch.isalpha() or ch.isspace())
-    message_words = {_stem_metaphone(word): word for word in message.lower().split()}
-
-    fighters_dict = {
-        _stem_metaphone(fighter.name.lower()): fighter for fighter in fighters
-    }
-
-    intersection = set(fighters_dict.keys()).intersection(set(message_words.keys()))
-    if len(intersection) == 1:
-        return fighters_dict[intersection.pop()]
-    if len(intersection) > 1:
-        human_words = [message_words[word] for word in intersection]
-        raise MoreThanOneFighterException(", ".join(human_words))
+    message_words = [word.lower() for word in message.split()]
+    
+    matches = []
+    for fighter in fighters:
+        fighter_name = _stem_metaphone(fighter.name)
+        for word in message_words:
+            word = _stem_metaphone(word)
+            score = fuzz.ratio(fighter_name, word)
+            if score >= 75:  # threshold for vague matching
+                matches.append(fighter)
+                break
+    
+    if len(matches) == 1:
+        return matches[0]
+    elif len(matches) > 1:
+        raise MoreThanOneFighterException(", ".join([f.name for f in matches]))
     else:
         raise FighterNonFoundException
-
-
-def _stem_metaphone(word: str) -> str:
-    w = stem.singular_noun(word) or word
-    return metaphone(w)[0]

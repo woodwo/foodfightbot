@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 
 # Replace 'TOKEN' with your actual bot token
 bot = telebot.TeleBot(os.getenv("TOKEN"))
+DEVELOPER_ID = int(os.getenv("DEVELOPER_ID", "0"))
 
 
 FIGHTER = range(1)
@@ -63,6 +64,16 @@ class FoodFightBot:
 
     def run(self):
         application = Application.builder().token(self.token).build()
+
+        # Add daily notification job
+        job_queue = application.job_queue
+        # Set time to 14:00 UTC (not to send at nights)
+        notification_time = time(14, 0, 0)
+        job_queue.run_daily(
+            self.send_daily_notification,
+            time=notification_time,
+            days=(0, 1, 2, 3, 4, 5, 6),  # All days
+        )
 
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler("start", self.start)],
@@ -85,7 +96,11 @@ class FoodFightBot:
         )
 
         application.add_handler(conv_handler)
-        # ...and the error handler
+        application.add_handler(CommandHandler("fighters", self.show_fighters))
+        application.add_handler(CommandHandler("calories", self.show_calories))
+        application.add_handler(CommandHandler("remind", self.toggle_notifications))
+        application.add_handler(CommandHandler("help", self.help))
+        application.add_handler(CommandHandler("testnotify", self.test_notification))
         application.add_error_handler(error_handler)
         application.run_polling()
 
@@ -289,7 +304,7 @@ class FoodFightBot:
         await update.message.reply_text(
             f"{fighter.name} [{fighter.icon}] vs. {opponent.name} [{opponent.icon}]!"
         )
-        await update.message.reply_text(f"Fight started...")
+        await update.message.reply_text("Fight started...")
         # FIXME here is also a fight method decompose me
         # await update.chat_action("typing")
         await asyncio.sleep(3)
@@ -336,6 +351,190 @@ class FoodFightBot:
         today_calories = sum(row.attack_power for row in user_fighters_calories)
         # logger.info("User %s calories today %d.", user.first_name, today_calories)
         return today_calories
+
+    async def show_fighters(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Shows the available fighters for the user."""
+        user = update.message.from_user
+        logger.info("User %s requested available fighters.", user.first_name)
+
+        session = Session()
+        fighters = (
+            session.query(Fighter)
+            .join(UserFighter)
+            .filter(UserFighter.user_id == user.id)
+            .all()
+        )
+
+        if not fighters:
+            await update.message.reply_text(
+                "No fighters available. Please start a new game with /start."
+            )
+            return
+
+        fighter_list = "\n".join(f"{f.name} [{f.icon}]" for f in fighters)
+        await update.message.reply_text(f"Available fighters:\n{fighter_list}")
+
+        session.close()
+
+    async def show_calories(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Shows the remaining calories for today and suggests available fighters."""
+        user = update.message.from_user
+        logger.info("User %s requested remaining calories.", user.first_name)
+
+        session = Session()
+        try:
+            consumed_calories = await self.get_user_calories(session, user)
+            remaining_calories = TOTAL_DAILY_CALORIES - consumed_calories
+
+            # Get user's available fighters that fit within remaining calories
+            available_fighters = (
+                session.query(Fighter)
+                .join(UserFighter)
+                .filter(
+                    UserFighter.user_id == user.id,
+                    Fighter.attack_power <= remaining_calories,
+                )
+                .order_by(
+                    Fighter.attack_power.desc()
+                )  # Order by attack power, highest first
+                .limit(3)  # Get top 3
+                .all()
+            )
+
+            status_message = (
+                f"Calories status for today:\n"
+                f"🔸 Consumed: {consumed_calories}\n"
+                f"🔸 Remaining: {remaining_calories}\n"
+                f"🔸 Daily limit: {TOTAL_DAILY_CALORIES}\n"
+            )
+
+            if available_fighters:
+                fighters_message = "\nTop fighters you can use now:\n"
+                for fighter in available_fighters:
+                    fighters_message += f"• {fighter.name} [{fighter.icon}] - {fighter.attack_power} calories\n"
+                await update.message.reply_text(status_message + fighters_message)
+            else:
+                await update.message.reply_text(
+                    status_message
+                    + "\nNo fighters available within your remaining calories limit."
+                )
+        finally:
+            session.close()
+
+    async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Shows help message with available commands."""
+        help_text = (
+            "Available commands:\n\n"
+            "/start - Start a new game and choose your fighter\n"
+            "/fighters - Show your available fighters\n"
+            "/calories - Show your calories status for today\n"
+            "/remind - Toggle daily reminders\n"
+            "/help - Show this help message\n"
+            "/cancel - End the current conversation"
+        )
+
+        # Add admin commands if the user is admin
+        if update.message.from_user.id == DEVELOPER_ID:
+            help_text += "\n\nAdmin commands:\n"
+            help_text += "/testnotify - Test daily notification\n"
+
+        await update.message.reply_text(help_text)
+
+    async def test_notification(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Test notification sending (admin only)."""
+        if update.message.from_user.id != DEVELOPER_ID:
+            # keep silent
+            logger.warn(
+                f"Test notification requested by user {update.message.from_user.id} but not admin"
+            )
+            return
+
+        logger.info(
+            f"Test notification requested by user {update.message.from_user.id}"
+        )
+        try:
+            await self.send_daily_notification(context)
+            await update.message.reply_text("Test notification completed.")
+        except Exception as e:
+            error_msg = f"Failed to send test notification: {str(e)}"
+            logger.error(error_msg)
+            await update.message.reply_text(error_msg)
+
+    async def send_daily_notification(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Send daily notification to subscribed users who haven't played today."""
+        logger.info("Starting daily notification sending...")
+        session = Session()
+        try:
+            current_date = datetime.now().date()
+
+            # Get users who:
+            # 1. Have notifications enabled
+            # 2. Haven't played today
+            users_to_notify = (
+                session.query(User)
+                .filter(
+                    User.notifications_enabled == True,
+                    ~User.fight_results.any(
+                        func.date(FightResult.timestamp) == current_date
+                    ),
+                )
+                .all()
+            )
+
+            logger.info(f"Found {len(users_to_notify)} users to notify")
+
+            for user in users_to_notify:
+                try:
+                    await context.bot.send_message(
+                        chat_id=user.id,
+                        text="🎮 Don't forget to play Food Fight today! New fighters are available! Use /calories to check your daily limit and available fighters.",
+                    )
+                    logger.info(
+                        f"Sent daily notification to user {user.name} (ID: {user.id})"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to send notification to user {user.id}: {str(e)}"
+                    )
+        except Exception as e:
+            logger.error(f"Error in send_daily_notification: {str(e)}")
+        finally:
+            session.close()
+            logger.info("Finished sending daily notifications")
+
+    async def toggle_notifications(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Toggle daily notifications for the user."""
+        user = update.message.from_user
+        logger.info(f"User {user.first_name} (ID: {user.id}) toggling notifications")
+
+        session = Session()
+        try:
+            db_user = session.query(User).get(user.id)
+            if not db_user:
+                await update.message.reply_text(
+                    "Please start the game first with /start"
+                )
+                return
+
+            db_user.notifications_enabled = not db_user.notifications_enabled
+            session.commit()
+
+            status = "enabled" if db_user.notifications_enabled else "disabled"
+            await update.message.reply_text(f"Daily notifications are now {status}.")
+
+        except Exception as e:
+            logger.error(f"Failed to toggle notifications for user {user.id}: {str(e)}")
+            await update.message.reply_text("Failed to update notification settings.")
+        finally:
+            session.close()
 
 
 if __name__ == "__main__":
